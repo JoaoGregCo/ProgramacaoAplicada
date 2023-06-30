@@ -1,81 +1,98 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <windows.h>
+
+#define MAX_COMMAND_LENGTH 20
+#define MAX_LIST_SIZE 3
 
 typedef struct Node {
     int speed;
     struct Node* next;
 } Node;
 
-Node* head = NULL;
-int count = 0;
-
-void insertNode(int speed) {
-    if (count == 3) {
-        // Remove o nó mais antigo
-        Node* current = head;
-        head = head->next;
-        free(current);
-        count--;
-    }
-
-    // Insere o novo nó no início da lista
-    Node* newNode = (Node*)malloc(sizeof(Node));
-    newNode->speed = speed;
-    newNode->next = head;
-    head = newNode;
-    count++;
+// Função para enviar um comando para o Arduino pela porta serial
+void sendCommand(HANDLE serialHandle, const char* command) {
+    DWORD bytesWritten;
+    WriteFile(serialHandle, command, strlen(command), &bytesWritten, NULL);
 }
 
-void printList() {
-    Node* current = head;
+// Função para receber uma resposta do Arduino pela porta serial
+void receiveResponse(HANDLE serialHandle, char* response) {
+    DWORD bytesRead;
+    ReadFile(serialHandle, response, MAX_COMMAND_LENGTH, &bytesRead, NULL);
+    response[bytesRead] = '\0';
+    printf("%s\n", response);
+}
+
+// Função para imprimir a lista de velocidades
+void printSpeedList(Node* head) {
     printf("Lista de velocidades:\n");
+    Node* current = head;
     while (current != NULL) {
         printf("%d\n", current->speed);
         current = current->next;
     }
 }
 
-void freeList() {
+// Função para inserir um novo nó na lista
+Node* insertNode(Node* head, int speed) {
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->speed = speed;
+    newNode->next = NULL;
+
+    if (head == NULL) {
+        return newNode;
+    } else {
+        Node* current = head;
+        while (current->next != NULL) {
+            current = current->next;
+        }
+        current->next = newNode;
+        return head;
+    }
+}
+
+// Função para liberar a memória ocupada pela lista
+void freeList(Node* head) {
     Node* current = head;
-    Node* next;
     while (current != NULL) {
-        next = current->next;
+        Node* next = current->next;
         free(current);
         current = next;
     }
-    head = NULL;
-    count = 0;
 }
 
 int main() {
-    HANDLE hSerial;
+    HANDLE serialHandle;
     DCB dcbSerialParams = { 0 };
     COMMTIMEOUTS timeouts = { 0 };
-    DWORD bytesRead, bytesWritten;
-    char command[6];
+    char command[MAX_COMMAND_LENGTH];
+    char response[MAX_COMMAND_LENGTH];
+    Node* speedList = NULL;
+    int speedListSize = 0;
 
     // Abre a porta serial COM3
-    hSerial = CreateFile("COM3", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hSerial == INVALID_HANDLE_VALUE) {
-        printf("Falha ao abrir a porta serial COM3.\n");
+    serialHandle = CreateFile("COM3", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (serialHandle == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Erro ao abrir a porta serial.\n");
         return 1;
     }
 
     // Configura os parâmetros da porta serial
     dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-    if (!GetCommState(hSerial, &dcbSerialParams)) {
-        printf("Falha ao obter os parametros da porta serial.\n");
-        CloseHandle(hSerial);
+    if (!GetCommState(serialHandle, &dcbSerialParams)) {
+        fprintf(stderr, "Erro ao obter os parâmetros da porta serial.\n");
+        CloseHandle(serialHandle);
         return 1;
     }
     dcbSerialParams.BaudRate = CBR_9600;
     dcbSerialParams.ByteSize = 8;
     dcbSerialParams.StopBits = ONESTOPBIT;
     dcbSerialParams.Parity = NOPARITY;
-    if (!SetCommState(hSerial, &dcbSerialParams)) {
-        printf("Falha ao configurar os parametros da porta serial.\n");
-        CloseHandle(hSerial);
+    if (!SetCommState(serialHandle, &dcbSerialParams)) {
+        fprintf(stderr, "Erro ao configurar os parâmetros da porta serial.\n");
+        CloseHandle(serialHandle);
         return 1;
     }
 
@@ -85,60 +102,52 @@ int main() {
     timeouts.ReadTotalTimeoutMultiplier = 10;
     timeouts.WriteTotalTimeoutConstant = 50;
     timeouts.WriteTotalTimeoutMultiplier = 10;
-    if (!SetCommTimeouts(hSerial, &timeouts)) {
-        printf("Falha ao configurar os timeouts da porta serial.\n");
-        CloseHandle(hSerial);
+    if (!SetCommTimeouts(serialHandle, &timeouts)) {
+        fprintf(stderr, "Erro ao configurar os timeouts da porta serial.\n");
+        CloseHandle(serialHandle);
         return 1;
     }
 
-    // Loop principal
+    printf("Comandos disponíveis:\n");
+    printf("b1 - Liga/desliga motor e LED 1\n");
+    printf("b2 - Liga/desliga LED 2 e move o servo motor\n");
+    printf("v  - Obtém a velocidade do motor\n");
+    printf("status - Obtém informações do estado dos componentes\n");
+    printf("lista - Imprime a lista de velocidades\n");
+    printf("exit - Sai do programa\n");
+
     while (1) {
-        // Leitura do comando
-        printf("Digite um comando ('v' para velocidade, 'b1' para botao 1, 'b2' para botao 2, 'lista' para imprimir a lista): ");
-        scanf("%s", command);
+        printf("\nDigite um comando: ");
+        fgets(command, sizeof(command), stdin);
+        command[strcspn(command, "\n")] = '\0'; // Remove o caractere de nova linha
 
-        // Envio do comando pela porta serial
-        if (!WriteFile(hSerial, command, strlen(command), &bytesWritten, NULL)) {
-            printf("Falha ao enviar o comando pela porta serial.\n");
-            CloseHandle(hSerial);
-            freeList();
-            return 1;
-        }
-
-        // Leitura da resposta pela porta serial
-        char response[256];
-        if (!ReadFile(hSerial, response, sizeof(response), &bytesRead, NULL)) {
-            printf("Falha ao ler a resposta pela porta serial.\n");
-            CloseHandle(hSerial);
-            freeList();
-            return 1;
-        }
-
-        // Manipulação da resposta
-        response[bytesRead] = '\0';
-        if (strcmp(command, "v") == 0) {
-            // Comando 'v' - Velocidade
-            int speed = atoi(response);
-            insertNode(speed);
-            printf("Velocidade do motor: %d\n", speed);
-        } else if (strcmp(command, "b1") == 0) {
-            // Comando 'b1' - Botão 1
-            printf("Botao 1: %s\n", response);
-        } else if (strcmp(command, "b2") == 0) {
-            // Comando 'b2' - Botão 2
-            printf("Botao 2: %s\n", response);
+        if (strcmp(command, "exit") == 0) {
+            break;
         } else if (strcmp(command, "lista") == 0) {
-            // Comando 'lista' - Imprimir a lista
-            printList();
+            printSpeedList(speedList);
         } else {
-            // Comando inválido
-            printf("Comando invalido.\n");
+            sendCommand(serialHandle, command);
+            receiveResponse(serialHandle, response);
+
+            if (strcmp(command, "v") == 0) {
+                int speed = atoi(response);
+                speedList = insertNode(speedList, speed);
+                speedListSize++;
+                while (speedListSize > MAX_LIST_SIZE) {
+                    Node* temp = speedList;
+                    speedList = speedList->next;
+                    free(temp);
+                    speedListSize--;
+                }
+            }
         }
     }
 
-    // Fechamento da porta serial e liberação de memória
-    CloseHandle(hSerial);
-    freeList();
+    // Libera a memória ocupada pela lista
+    freeList(speedList);
+
+    // Fecha a porta serial
+    CloseHandle(serialHandle);
 
     return 0;
 }
