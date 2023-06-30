@@ -111,8 +111,8 @@ int main() {
     printf("Comandos disponíveis:\n");
     printf("b1 - Liga/desliga motor e LED 1\n");
     printf("b2 - Liga/desliga LED 2 e move o servo motor\n");
-    printf("v  - Obtém a velocidade do motor\n");
-    printf("status - Obtém informações do estado dos componentes\n");
+    printf("v  - Obtem a velocidade do motor\n");
+    printf("status - Obtem informações do estado dos componentes\n");
     printf("lista - Imprime a lista de velocidades\n");
     printf("exit - Sai do programa\n");
 
