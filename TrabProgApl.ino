@@ -51,8 +51,6 @@ void loop() {
 
     // Liga ou desliga o LED 2
     isLed2On = !isLed2On;
-
-    // Faz o movimento do servo motor
     if (isLed2On) {
       servoPos = 0;  // Define a posição inicial do servo motor
     }
@@ -68,44 +66,31 @@ void loop() {
   if (isMotorOn) {
     // Lógica para ligar o motor
     int potValue = analogRead(potPin);  // Lê o valor do potenciômetro
-    motorSpeed = map(potValue, 0, 1023, 0, 255);  // Mapeia o valor lido para a faixa de 0 a 255
-
-    analogWrite(motorPin, motorSpeed);  // Define a velocidade do motor com base no valor lido
+    motorSpeed = map(potValue, 0, 1023, 0, 255);  // Mapeia o valor lido para a faixa de velocidade do motor
+    analogWrite(motorPin, motorSpeed);  // Define a velocidade do motor
   } else {
-    // Lógica para desligar o motor
-    motorSpeed = 0;  // Define a velocidade mínima do motor
-    analogWrite(motorPin, motorSpeed);
+    // Desliga o motor
+    analogWrite(motorPin, 0);
   }
 
-  // Controla o LED 1
-  if (isLedOn) {
-    // Lógica para ligar o LED 1
-    digitalWrite(ledPin, HIGH);
-  } else {
-    // Lógica para desligar o LED 1
-    digitalWrite(ledPin, LOW);
-  }
-
-  // Controla o LED 2 e o servo motor
+  // Controla o servo motor
   if (isLed2On) {
-    // Lógica para ligar o LED 2
-    digitalWrite(led2Pin, HIGH);
-
-    // Faz o movimento do servo motor
-    if (servoPos < 120) {
-      servoPos += 1;
-    } else {
-      servoPos = 0;
+    // Lógica para mover o servo motor
+    if (servoPos < 180) {
+      servoPos += 1;  // Incrementa a posição do servo motor
     }
-    // Envia o sinal para o servo motor
-    digitalWrite(servoPin, HIGH);
-    delayMicroseconds(100 + servoPos * 50);
-    digitalWrite(servoPin, LOW);
-    delay(200);
+    analogWrite(servoPin, servoPos);  // Define a posição do servo motor
+    delay(15);  // Delay para controlar a velocidade de movimento do servo motor
   } else {
-    // Lógica para desligar o LED 2
-    digitalWrite(led2Pin, LOW);
+    // Desliga o servo motor
+    analogWrite(servoPin, 0);
   }
+
+  // Atualiza o estado do LED 1
+  digitalWrite(ledPin, isLedOn ? HIGH : LOW);
+
+  // Atualiza o estado do LED 2
+  digitalWrite(led2Pin, isLed2On ? HIGH : LOW);
 
   // Leitura do comando pela porta serial
   if (Serial.available()) {
@@ -113,18 +98,33 @@ void loop() {
     command.trim();
 
     if (command == "b1") {
-      // Liga ou desliga o botão 1
       isMotorOn = !isMotorOn;
       isLedOn = !isLedOn;
     } else if (command == "b2") {
-      // Liga ou desliga o botão 2
       isLed2On = !isLed2On;
       if (isLed2On) {
         servoPos = 0;
       }
     } else if (command == "v") {
-      // Envia a velocidade atual do motor pela porta serial
-      Serial.println(motorSpeed);
+      int potValue = analogRead(potPin);
+      motorSpeed = map(potValue, 0, 1023, 0, 255);
+      analogWrite(motorPin, motorSpeed);
+    } else if (command == "status") {
+      // Envia o estado das saídas pela porta serial
+      Serial.print("A0: ");
+      Serial.print(analogRead(potPin));
+      Serial.print(" | LED 1: ");
+      Serial.print(isLedOn ? "ON" : "OFF");
+      Serial.print(" | LED 2: ");
+      Serial.print(isLed2On ? "ON" : "OFF");
+      Serial.print(" | Servo: ");
+      Serial.print(servoPos);
+      Serial.print(" | Motor: ");
+      Serial.print(isMotorOn ? "ON" : "OFF");
+      Serial.print(" | Button 1: ");
+      Serial.print(digitalRead(buttonPin) == HIGH ? "HIGH" : "LOW");
+      Serial.print(" | Button 2: ");
+      Serial.println(digitalRead(button2Pin) == HIGH ? "HIGH" : "LOW");
     }
   }
 }
